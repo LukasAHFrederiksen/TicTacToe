@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, set, onValue, update } from 'firebase/database';
+import { getDatabase, ref, set, onValue, update, get } from 'firebase/database';
 import {
   FIREBASE_API_KEY,
   FIREBASE_AUTH_DOMAIN,
@@ -25,23 +25,55 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 
-export const createGame = (gameId) => {
+export const createGame = async (gameId) => {
   const gameRef = ref(database, `games/${gameId}`);
-  set(gameRef, {
-    board: Array(9).fill(null),
-    currentPlayer: 'X',
-    gameStatus: '',
-  });
+  try {
+    await set(gameRef, {
+      players: {
+        X: { joined: true },
+        O: { joined: false }
+      },
+      moves: {},
+      currentPlayer: 'X',
+      gameStatus: 'waiting',
+    });
+    return { gameId, playerId: 'X' };
+  } catch (error) {
+    console.error("Error creating game:", error);
+    throw error;
+  }
 };
 
-export const joinGame = (gameId, playerId) => {
+export const joinGame = async (gameId, playerId) => {
   const gameRef = ref(database, `games/${gameId}`);
-  update(gameRef, { [playerId]: true });
+  try {
+    const gameSnapshot = await get(gameRef);
+    const gameData = gameSnapshot.val();
+
+    if (!gameData) {
+      throw new Error("Game not found");
+    }
+
+    if (gameData.players[playerId].joined) {
+      throw new Error("Player slot already taken");
+    }
+
+    const updates = {
+      [`players/${playerId}/joined`]: true,
+      gameStatus: 'active'
+    };
+
+    await update(gameRef, updates);
+    return { gameId, playerId };
+  } catch (error) {
+    console.error("Error joining game:", error);
+    throw error;
+  }
 };
 
 export const updateGame = (gameId, gameData) => {
   const gameRef = ref(database, `games/${gameId}`);
-  update(gameRef, gameData);
+  return update(gameRef, gameData);
 };
 
 export const listenToGameChanges = (gameId, callback) => {
@@ -68,10 +100,10 @@ export const listenToLobby = (callback) => {
 
 export const createLobbyGame = (gameId) => {
   const lobbyRef = ref(database, `lobby/${gameId}`);
-  set(lobbyRef, true);
+  return set(lobbyRef, true);
 };
 
 export const removeLobbyGame = (gameId) => {
   const lobbyRef = ref(database, `lobby/${gameId}`);
-  set(lobbyRef, null);
+  return set(lobbyRef, null);
 };

@@ -4,43 +4,57 @@ import { updateGame, listenToGameChanges } from './firebaseConnection';
 
 export default function Game({ route }) {
   const { gameId, playerId } = route.params;
-  const [board, setBoard] = useState(null);
-  const [currentPlayer, setCurrentPlayer] = useState('X');
-  const [gameStatus, setGameStatus] = useState('');
+  const [game, setGame] = useState(null);
 
   useEffect(() => {
     const unsubscribe = listenToGameChanges(gameId, (gameData) => {
-      setBoard(gameData.board);
-      setCurrentPlayer(gameData.currentPlayer);
-      setGameStatus(gameData.gameStatus);
+      console.log('Game data received:', gameData);
+      setGame(gameData);
     });
 
     return () => unsubscribe();
   }, [gameId]);
 
   const handleClick = (index) => {
-    if (!board || gameStatus !== '' || board[index] !== null || currentPlayer !== playerId) return;
+    if (!game) {
+      console.log('Game is null, cannot make a move');
+      return;
+    }
+    if (game.gameStatus !== 'active') {
+      console.log('Game is not active, cannot make a move');
+      return;
+    }
+    if (game.moves && game.moves[index]) {
+      console.log('Cell already occupied');
+      return;
+    }
+    if (game.currentPlayer !== playerId) {
+      console.log('Not your turn');
+      return;
+    }
 
-    const newBoard = [...board];
-    newBoard[index] = playerId;
+    const newMoves = { ...(game.moves || {}), [index]: playerId };
 
     updateGame(gameId, {
-      board: newBoard,
+      moves: newMoves,
       currentPlayer: playerId === 'X' ? 'O' : 'X',
     });
   };
 
-  const renderCell = (index) => (
-    <TouchableOpacity
-      key={index}
-      style={styles.cell}
-      onPress={() => handleClick(index)}
-    >
-      <Text style={styles.cellText}>{board[index]}</Text>
-    </TouchableOpacity>
-  );
+  const renderCell = (index) => {
+    const cellValue = game && game.moves ? game.moves[index] : null;
+    return (
+      <TouchableOpacity
+        key={index}
+        style={styles.cell}
+        onPress={() => handleClick(index)}
+      >
+        <Text style={styles.cellText}>{cellValue}</Text>
+      </TouchableOpacity>
+    );
+  };
 
-  if (!board) {
+  if (!game) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#0000ff" />
@@ -49,9 +63,25 @@ export default function Game({ route }) {
     );
   }
 
+  console.log('Current game state:', game);
+
+  if (game.gameStatus === 'waiting') {
+    return (
+      <View style={styles.container}>
+        <Text>Waiting for other player to join...</Text>
+      </View>
+    );
+  }
+
+  const board = Array(9).fill(null);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.status}>{gameStatus || `Player ${currentPlayer}'s turn`}</Text>
+      <Text style={styles.status}>
+        {game.gameStatus === 'active'
+          ? `Player ${game.currentPlayer}'s turn`
+          : `Game Over: ${game.gameStatus}`}
+      </Text>
       <View style={styles.board}>
         {board.map((_, index) => renderCell(index))}
       </View>
